@@ -1,85 +1,65 @@
-mod traits;
+mod impls;
+mod types;
 
-use std::ops::Not;
+use types::Error;
+pub use types::{Stack, TokenKind};
 
-pub use traits::{TokenKind, YardStorage};
-
-#[derive(Debug)]
-pub enum ShuntError<T> {
-    UnbalancedParens,
-    Malformed,
-    Storage(T),
-}
-
-impl<T> From<T> for ShuntError<T> {
-    fn from(value: T) -> Self {
-        ShuntError::Storage(value)
-    }
-}
-
-pub struct ShuntingYard<'a, Storage> {
+pub struct ShuntingYard<'a, Out, Op> {
     last_token_kind: Option<TokenKind>,
     stack_size: usize,
-    yard: &'a mut Storage,
+    outstack: &'a mut Out,
+    opstack: &'a mut Op,
 }
 
-impl<'a, Storage> ShuntingYard<'a, Storage>
+impl<'a, Token, Out, Op> ShuntingYard<'a, Out, Op>
 where
-    Storage: YardStorage,
-    for<'i> &'i Storage::Item: Into<TokenKind>,
+    Out: Stack<Item = Token>,
+    Op: Stack<Item = Token>,
+    for<'i> &'i Token: Into<TokenKind>,
 {
-    pub fn new(yard: &'a mut Storage) -> Self {
+    pub fn new(outstack: &'a mut Out, opstack: &'a mut Op) -> Self {
         Self {
-            yard,
-            stack_size: 0,
             last_token_kind: None,
+            stack_size: 0,
+            outstack,
+            opstack,
         }
     }
 
-    fn push_to_output_stack(
-        &mut self,
-        v: Storage::Item,
-    ) -> Result<(), ShuntError<Storage::StorageError>> {
+    fn push_to_output_stack(&mut self, v: Token) -> Result<(), Error> {
         match (&v).into() {
             TokenKind::Value => self.stack_size += 1,
             TokenKind::Operator(_) => {
                 if self.stack_size < 2 {
-                    return Err(ShuntError::Malformed);
+                    return Err(Error::Malformed);
                 }
                 self.stack_size -= 1
             }
             TokenKind::Function => {
                 if self.stack_size < 1 {
-                    return Err(ShuntError::Malformed);
+                    return Err(Error::Malformed);
                 }
             }
             TokenKind::LeftParen | TokenKind::RightParen => {
                 panic!("Can't push parens to the output")
             }
         }
-        self.yard.push_to_output_stack(v)?;
+        self.outstack.push(v)?;
         Ok(())
     }
 
-    pub fn process(
-        &mut self,
-        token: Storage::Item,
-    ) -> Result<(), ShuntError<Storage::StorageError>> {
+    pub fn process(&mut self, token: Token) -> Result<(), Error> {
         let kind = (&token).into();
 
         match (self.last_token_kind, kind) {
-            (Some(TokenKind::LeftParen), TokenKind::Operator(_)) => {
-                return Err(ShuntError::Malformed)
-            }
+            (Some(TokenKind::LeftParen), TokenKind::Operator(_)) => return Err(Error::Malformed),
             (Some(TokenKind::Operator(_)), TokenKind::RightParen) => {
-                return Err(ShuntError::Malformed);
+                return Err(Error::Malformed);
             }
-            (Some(TokenKind::Value), TokenKind::Value) => return Err(ShuntError::Malformed),
-            (Some(TokenKind::Operator(_)), TokenKind::Operator(_)) => {
-                return Err(ShuntError::Malformed)
-            }
+            (Some(TokenKind::Value), TokenKind::Value) => return Err(Error::Malformed),
+            (Some(TokenKind::Operator(_)), TokenKind::Operator(_)) => return Err(Error::Malformed),
             (Some(TokenKind::Function), x) if !matches!(x, TokenKind::LeftParen) => {
-                return Err(ShuntError::Malformed)
+                return Err(Error::Malformed)
             }
             (_, _) => {}
         };
@@ -88,45 +68,45 @@ where
 
         match kind {
             TokenKind::Value => self.push_to_output_stack(token)?,
-            TokenKind::Function => self.yard.push_to_operator_stack(token)?,
+            TokenKind::Function => self.opstack.push(token)?,
             TokenKind::Operator(o1_p) => {
-                while let Some(top_of_op_stack) = self.yard.peek_operator_stack() {
+                while let Some(top_of_op_stack) = self.opstack.peek() {
                     match top_of_op_stack.into() {
                         TokenKind::Operator(o2_p) if (o2_p >= o1_p) => {
-                            let popped = self.yard.pop_operator_stack().unwrap();
+                            let popped = self.opstack.pop().unwrap();
                             self.push_to_output_stack(popped)?;
                         }
                         _ => break,
                     }
                 }
-                self.yard.push_to_operator_stack(token)?;
+                self.opstack.push(token)?;
             }
-            TokenKind::LeftParen => self.yard.push_to_operator_stack(token)?,
+            TokenKind::LeftParen => self.opstack.push(token)?,
             TokenKind::RightParen => {
-                while let Some(top_of_op_stack) = self.yard.peek_operator_stack() {
+                while let Some(top_of_op_stack) = self.opstack.peek() {
                     match top_of_op_stack.into() {
                         TokenKind::LeftParen => {
                             break;
                         }
                         _ => {
-                            let popped = self.yard.pop_operator_stack().unwrap();
+                            let popped = self.opstack.pop().unwrap();
                             self.push_to_output_stack(popped)?
                         }
                     };
                 }
                 if !self
-                    .yard
-                    .pop_operator_stack()
+                    .opstack
+                    .pop()
                     .is_some_and(|v| matches!((&v).into(), TokenKind::LeftParen))
                 {
-                    return Err(ShuntError::UnbalancedParens);
+                    return Err(Error::UnbalancedParens);
                 }
                 if self
-                    .yard
-                    .peek_operator_stack()
+                    .opstack
+                    .peek()
                     .is_some_and(|v| matches!(v.into(), TokenKind::Function))
                 {
-                    let popped = self.yard.pop_operator_stack().unwrap();
+                    let popped = self.opstack.pop().unwrap();
                     self.push_to_output_stack(popped)?;
                 }
             }
@@ -134,15 +114,15 @@ where
         Ok(())
     }
 
-    pub fn finish(mut self) -> Result<(), ShuntError<Storage::StorageError>> {
-        while let Some(v) = self.yard.pop_operator_stack() {
+    pub fn finish(mut self) -> Result<(), Error> {
+        while let Some(v) = self.opstack.pop() {
             match (&v).into() {
-                traits::TokenKind::LeftParen => return Err(ShuntError::UnbalancedParens),
+                types::TokenKind::LeftParen => return Err(Error::UnbalancedParens),
                 _ => self.push_to_output_stack(v)?,
             };
         }
         if self.stack_size != 1 {
-            return Err(ShuntError::Malformed);
+            return Err(Error::Malformed);
         }
         Ok(())
     }
