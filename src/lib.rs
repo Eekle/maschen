@@ -7,8 +7,13 @@ use types::TokenKind as TK;
 pub use types::{Error, Stack, Token, TokenKind};
 
 pub struct ShuntingYard<Out, Op, Fun> {
+    /// The kind of the last processed token
     last_token_kind: Option<TK>,
-    final_op_count: usize,
+    /// The running count of how many items will be
+    /// on the runtime stack if this computation
+    /// is processed. At the end, this must be 1
+    /// for the expression to be valid.
+    final_value_count: usize,
     outstack: Out,
     opstack: Op,
     fnstack: Fun,
@@ -24,13 +29,18 @@ where
     pub fn new_with_storage(outstack: Out, opstack: Op, fnstack: Fun) -> Self {
         Self {
             last_token_kind: None,
-            final_op_count: 0,
+            final_value_count: 0,
             outstack,
             opstack,
             fnstack,
         }
     }
 
+    /// .Check if two tokens can follow each other
+    ///
+    /// # Errors
+    ///
+    /// If the sequence of tokens is illegal
     fn check_adjacency(before: Option<TK>, after: TK) -> Result<(), Error> {
         let is_okay = match before {
             Some(TK::Function(_)) => matches!(after, TK::LeftParen),
@@ -55,23 +65,32 @@ where
         }
     }
 
+    /// Push a value to the output stack, while tracking the
+    /// state of the computation thus far.
+    ///
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the push would generate a nonsensical
+    /// computation, such as an operator that doesn't have enough
+    /// arguments or a function that doesn't have the right number
     fn push_to_output_stack(&mut self, v: T) -> Result<(), Error> {
         let kind = v.kind();
         match kind {
-            TK::Value => self.final_op_count += 1,
+            TK::Value => self.final_value_count += 1,
             TK::InfixOperator(_) => {
-                if self.final_op_count < 2 {
+                if self.final_value_count < 2 {
                     return Err(Error::Malformed);
                 }
-                self.final_op_count -= 1
+                self.final_value_count -= 1
             }
             TK::UnaryOperator => {
-                if self.final_op_count < 1 {
+                if self.final_value_count < 1 {
                     return Err(Error::Malformed);
                 }
             }
             TK::Function(n) => {
-                if n == 0 || self.final_op_count < n {
+                if n == 0 || self.final_value_count < n {
                     return Err(Error::FunctionLen);
                 }
                 match self.fnstack.pop() {
@@ -79,20 +98,21 @@ where
                     Some(1) => {}
                     Some(_) => return Err(Error::FunctionLen),
                 }
-                self.final_op_count -= n - 1;
+                self.final_value_count -= n - 1;
             }
-            TK::LeftParen | TK::RightParen | TK::FnSeparator => {
-                panic!("Can't push parens to the output")
-            }
+            _ => return Err(Error::Internal),
         }
         self.outstack.push(v)?;
         Ok(())
     }
 
     fn pop_operators_while(&mut self, predicate: impl Fn(TK) -> bool) -> Result<(), Error> {
-        while self.opstack.peek().is_some_and(|v| predicate(v.kind())) {
-            let popped = self.opstack.pop().unwrap();
-            self.push_to_output_stack(popped)?
+        while let Some(popped) = self.opstack.pop() {
+            if predicate(popped.kind()) {
+                self.push_to_output_stack(popped)?;
+            } else {
+                return self.opstack.push(popped);
+            }
         }
         Ok(())
     }
@@ -139,6 +159,7 @@ where
         Ok(())
     }
 
+    /// Mark the input stream as complete. Returns the output stack.
     pub fn finish(mut self) -> Result<Out, Error> {
         while let Some(v) = self.opstack.pop() {
             match v.kind() {
@@ -146,7 +167,7 @@ where
                 _ => self.push_to_output_stack(v)?,
             };
         }
-        if self.final_op_count != 1 {
+        if self.final_value_count != 1 {
             return Err(Error::Malformed);
         }
         Ok(self.outstack)

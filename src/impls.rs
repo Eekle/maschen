@@ -12,10 +12,6 @@ impl<T> types::Stack for Vec<T> {
     fn pop(&mut self) -> Option<Self::Item> {
         self.pop()
     }
-
-    fn peek(&self) -> Option<&Self::Item> {
-        self.last()
-    }
 }
 
 impl<T> types::Stack for &mut T
@@ -24,16 +20,12 @@ where
 {
     type Item = T::Item;
 
-    fn push(&mut self, value: Self::Item) -> Result<(), crate::Error> {
+    fn push(&mut self, value: Self::Item) -> Result<(), types::Error> {
         (**self).push(value)
     }
 
     fn pop(&mut self) -> Option<Self::Item> {
         (**self).pop()
-    }
-
-    fn peek(&self) -> Option<&Self::Item> {
-        (**self).peek()
     }
 }
 
