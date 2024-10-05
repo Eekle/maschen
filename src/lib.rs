@@ -4,25 +4,37 @@ mod types;
 use types::TokenKind as TK;
 pub use types::{Error, Stack, Token, TokenKind};
 
-pub struct ShuntingYard<'a, Out, Op, Fun> {
+pub struct ShuntingYard<Out, Op, Fun> {
     last_token_kind: Option<TK>,
-    stack_size: usize,
-    outstack: &'a mut Out,
-    opstack: &'a mut Op,
-    fnstack: &'a mut Fun,
+    final_op_count: usize,
+    outstack: Out,
+    opstack: Op,
+    fnstack: Fun,
 }
 
-impl<'a, Token, Out, Op, Fun> ShuntingYard<'a, Out, Op, Fun>
+impl<T: types::Token> ShuntingYard<Vec<T>, Vec<T>, Vec<usize>> {
+    pub fn new() -> Self {
+        ShuntingYard::new_with_storage(vec![], vec![], vec![])
+    }
+}
+
+impl<T: types::Token> Default for ShuntingYard<Vec<T>, Vec<T>, Vec<usize>> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T, Out, Op, Fun> ShuntingYard<Out, Op, Fun>
 where
-    Out: Stack<Item = Token>,
-    Op: Stack<Item = Token>,
+    Out: Stack<Item = T>,
+    Op: Stack<Item = T>,
     Fun: Stack<Item = usize>,
-    Token: types::Token,
+    T: types::Token,
 {
-    pub fn new(outstack: &'a mut Out, opstack: &'a mut Op, fnstack: &'a mut Fun) -> Self {
+    pub fn new_with_storage(outstack: Out, opstack: Op, fnstack: Fun) -> Self {
         Self {
             last_token_kind: None,
-            stack_size: 0,
+            final_op_count: 0,
             outstack,
             opstack,
             fnstack,
@@ -53,23 +65,23 @@ where
         }
     }
 
-    fn push_to_output_stack(&mut self, v: Token) -> Result<(), Error> {
+    fn push_to_output_stack(&mut self, v: T) -> Result<(), Error> {
         let kind = v.kind();
         match kind {
-            TK::Value => self.stack_size += 1,
+            TK::Value => self.final_op_count += 1,
             TK::InfixOperator(_) => {
-                if self.stack_size < 2 {
+                if self.final_op_count < 2 {
                     return Err(Error::Malformed);
                 }
-                self.stack_size -= 1
+                self.final_op_count -= 1
             }
             TK::UnaryOperator => {
-                if self.stack_size < 1 {
+                if self.final_op_count < 1 {
                     return Err(Error::Malformed);
                 }
             }
             TK::Function(n) => {
-                if n == 0 || self.stack_size < n {
+                if n == 0 || self.final_op_count < n {
                     return Err(Error::FunctionLen);
                 }
                 match self.fnstack.pop() {
@@ -77,7 +89,7 @@ where
                     Some(1) => {}
                     Some(_) => return Err(Error::FunctionLen),
                 }
-                self.stack_size -= n - 1;
+                self.final_op_count -= n - 1;
             }
             TK::LeftParen | TK::RightParen | TK::FnSeparator => {
                 panic!("Can't push parens to the output")
@@ -95,7 +107,7 @@ where
         Ok(())
     }
 
-    pub fn process(&mut self, token: Token) -> Result<(), Error> {
+    pub fn process(&mut self, token: T) -> Result<(), Error> {
         let kind = token.kind();
         Self::check_adjacency(self.last_token_kind, kind)?;
         self.last_token_kind = Some(kind);
@@ -137,16 +149,16 @@ where
         Ok(())
     }
 
-    pub fn finish(mut self) -> Result<(), Error> {
+    pub fn finish(mut self) -> Result<Out, Error> {
         while let Some(v) = self.opstack.pop() {
             match v.kind() {
                 TK::LeftParen => return Err(Error::UnbalancedParens),
                 _ => self.push_to_output_stack(v)?,
             };
         }
-        if self.stack_size != 1 {
+        if self.final_op_count != 1 {
             return Err(Error::Malformed);
         }
-        Ok(())
+        Ok(self.outstack)
     }
 }

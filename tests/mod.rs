@@ -20,17 +20,14 @@ impl<'a> maschen::Token for StringToken<'a> {
     }
 }
 fn test_in_out(inp: &str, outp: &str) -> Result<(), maschen::Error> {
-    let mut outstack = vec![];
-    let mut opstack = vec![];
-    let mut fnstack = vec![];
     let stream = inp.split(' ').map(StringToken);
-    let mut yard = ShuntingYard::new(&mut outstack, &mut opstack, &mut fnstack);
+    let mut yard = ShuntingYard::default();
     for v in stream {
         yard.process(v)?;
     }
-    yard.finish()?;
-    let mut yard_output = String::from_str(outstack.remove(0).0).unwrap();
-    for tok in outstack.iter() {
+    let mut outcome = yard.finish()?;
+    let mut yard_output = String::from_str(outcome.remove(0).0).unwrap();
+    for tok in outcome.iter() {
         yard_output.push(' ');
         yard_output.push_str(tok.0);
     }
