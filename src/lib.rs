@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 mod impls;
 mod types;
 
@@ -10,18 +12,6 @@ pub struct ShuntingYard<Out, Op, Fun> {
     outstack: Out,
     opstack: Op,
     fnstack: Fun,
-}
-
-impl<T: types::Token> ShuntingYard<Vec<T>, Vec<T>, Vec<usize>> {
-    pub fn new() -> Self {
-        ShuntingYard::new_with_storage(vec![], vec![], vec![])
-    }
-}
-
-impl<T: types::Token> Default for ShuntingYard<Vec<T>, Vec<T>, Vec<usize>> {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl<T, Out, Op, Fun> ShuntingYard<Out, Op, Fun>

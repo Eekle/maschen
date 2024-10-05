@@ -2,6 +2,17 @@
 name = "maschen"
 version = "0.1.0"
 edition = "2021"
+authors = ["Eekle"]
+description = "A no-std compatible shunting yard implementation"
+license = "MIT"
+homepage = "https://github.com/Eekle/maschen"
+repository = "https://github.com/Eekle/maschen"
+keywords = ["no-std", "no_std", "embedded"]
+categories = ["algorithms"]
 
 [dependencies]
 thiserror = "1.0.64"
+
+[features]
+default = ["std"]
+std = []

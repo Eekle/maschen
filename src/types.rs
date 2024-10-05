@@ -9,15 +9,11 @@ pub enum TokenKind {
     FnSeparator,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
-    #[error("Parentheses don't match up")]
     UnbalancedParens,
-    #[error("Token stream is malformed")]
     Malformed,
-    #[error("Backing storage is full")]
     StorageFull,
-    #[error("Function given wrong number of arguments")]
     FunctionLen,
 }
 

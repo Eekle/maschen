@@ -1,5 +1,6 @@
 use crate::types;
 
+#[cfg(feature = "std")]
 impl<T> types::Stack for Vec<T> {
     type Item = T;
 
@@ -33,5 +34,19 @@ where
 
     fn peek(&self) -> Option<&Self::Item> {
         (**self).peek()
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T: types::Token> crate::ShuntingYard<Vec<T>, Vec<T>, Vec<usize>> {
+    pub fn new() -> Self {
+        crate::ShuntingYard::new_with_storage(vec![], vec![], vec![])
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T: types::Token> Default for crate::ShuntingYard<Vec<T>, Vec<T>, Vec<usize>> {
+    fn default() -> Self {
+        Self::new()
     }
 }
