@@ -3,9 +3,10 @@ pub enum TokenKind {
     Value,
     InfixOperator(usize),
     UnaryOperator,
-    Function,
+    Function(usize),
     LeftParen,
     RightParen,
+    FnSeparator,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -16,6 +17,8 @@ pub enum Error {
     Malformed,
     #[error("Backing storage is full")]
     StorageFull,
+    #[error("Function given wrong number of arguments")]
+    FunctionLen,
 }
 
 pub trait Stack {

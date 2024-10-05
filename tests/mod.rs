@@ -1,6 +1,5 @@
-use std::str::FromStr;
-
 use maschen::{self, ShuntingYard, TokenKind};
+use std::str::FromStr;
 
 #[derive(Debug)]
 struct StringToken<'a>(&'a str);
@@ -13,7 +12,9 @@ impl<'a> maschen::Token for StringToken<'a> {
             "(" => TokenKind::LeftParen,
             ")" => TokenKind::RightParen,
             "~" => TokenKind::UnaryOperator,
-            "sin" | "cos" | "tan" | "log" => TokenKind::Function,
+            "," => TokenKind::FnSeparator,
+            "sin" | "cos" | "tan" | "log" => TokenKind::Function(1),
+            "max" | "min" => TokenKind::Function(2),
             _ => TokenKind::Value,
         }
     }
@@ -21,8 +22,9 @@ impl<'a> maschen::Token for StringToken<'a> {
 fn test_in_out(inp: &str, outp: &str) -> Result<(), maschen::Error> {
     let mut outstack = vec![];
     let mut opstack = vec![];
+    let mut fnstack = vec![];
     let stream = inp.split(' ').map(StringToken);
-    let mut yard = ShuntingYard::new(&mut outstack, &mut opstack);
+    let mut yard = ShuntingYard::new(&mut outstack, &mut opstack, &mut fnstack);
     for v in stream {
         yard.process(v)?;
     }
@@ -78,4 +80,19 @@ fn unary_and_infix_and_func() -> anyhow::Result<(), maschen::Error> {
 #[test]
 fn nested_braces() -> anyhow::Result<(), maschen::Error> {
     test_in_out("3 * ( 4 + ( 2 - 1 ) )", "3 4 2 1 - + *")
+}
+
+#[test]
+fn fn2() -> anyhow::Result<(), maschen::Error> {
+    test_in_out("max ( 2 , 3 )", "2 3 max")
+}
+
+#[test]
+fn fn_with_nested() -> anyhow::Result<(), maschen::Error> {
+    test_in_out("max ( ( ( 2 , 3 ) ) )", "2 3 max")
+}
+
+#[test]
+fn nested_fns() -> anyhow::Result<(), maschen::Error> {
+    test_in_out("max ( 3 , max ( log ( 4 ) , 2 ) )", "3 4 log 2 max max")
 }
